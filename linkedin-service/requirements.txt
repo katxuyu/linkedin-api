@@ -1,0 +1,13 @@
+Flask==3.1.2
+Flask-CORS==6.0.1
+requests==2.32.5
+playwright==1.55.0
+fake-useragent==2.2.0
+cryptography==46.0.2
+redis==6.4.0
+psycopg2-binary==2.9.11
+sqlalchemy==2.0.44
+python-dotenv==1.1.1
+gunicorn==23.0.0
+# gevent removed - conflicts with Playwright sync API
+uvicorn==0.37.0

@@ -1,0 +1,15 @@
+version: "2"
+authtoken_from_env: true
+tunnels:
+  api:
+    proto: http
+    addr: 8088
+    hostname_from_env: true
+  frontend:
+    proto: http
+    addr: 3000
+    hostname_from_env: true
+
+
+
+

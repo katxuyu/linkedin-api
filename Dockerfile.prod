@@ -1,0 +1,58 @@
+# Stage 1: Build stage
+FROM python:3.11.13-slim AS builder
+
+WORKDIR /app
+
+# System dependencies for building packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies in a temporary virtual environment
+COPY requirements.txt requirements_dev.txt ./
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Stage 2: Production stage
+FROM python:3.11.13-slim
+
+WORKDIR /app
+
+# Install runtime dependencies (libpq for psycopg2, curl for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Set Python environment
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Copy app code
+COPY . .
+
+# Create non-root user and set ownership
+RUN useradd -m appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Gunicorn command with Uvicorn workers
+# Timeout increased to 120s for long-running requests
+CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--workers", "4", "--bind", "0.0.0.0:8000", "--log-level", "info", "--access-logfile", "-", "--timeout", "120"]

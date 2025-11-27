@@ -1,0 +1,154 @@
+services:
+  linkedin-service:
+    build:
+      context: ./linkedin-service
+      dockerfile: Dockerfile.dev
+    container_name: linkedin-service
+    environment:
+      - LINKEDIN_SERVICE_PORT=${LINKEDIN_SERVICE_PORT}
+      - MAIN_BACKEND_URL=http://web:8000
+      # Redis connection for session storage
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=1
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./linkedin-service:/app
+    depends_on:
+      - redis
+    restart: always
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: web
+    volumes:
+      - .:/app
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    networks:
+      - backend
+    ports:
+      - "8000:8000"
+
+  redis:
+    image: redis:8.2-alpine
+    container_name: redis
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a ${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - backend
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: celery
+    command: celery -A app.celery_app worker --loglevel=INFO
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    networks:
+      - backend
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: celery-beat
+    command: celery -A app.celery_app beat --loglevel=INFO
+    depends_on:
+      - redis
+      - celery
+    env_file:
+      - .env
+    volumes:
+      - celery-beat-data:/tmp
+    networks:
+      - backend
+
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: flower
+    command: celery -A app.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - celery
+      - redis
+    env_file:
+      - .env
+    environment:
+      - FLOWER_UNAUTHENTICATED_API=true
+    networks:
+      - backend
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: streamlit
+    command: streamlit run streamlit_app/main.py --server.port=8501 --server.address=0.0.0.0
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - .:/app
+    ports:
+      - "8501:8501"
+    networks:
+      - backend
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_API_URL_SSR=${NEXT_PUBLIC_API_URL_SSR:-http://web:8000}
+      - WATCHPACK_POLLING=true
+    depends_on:
+      - web
+    networks:
+      - backend
+    restart: always
+
+volumes:
+  celery-beat-data:
+  redis-data:
+
+networks:
+  backend:
+    driver: bridge
