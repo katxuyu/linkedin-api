@@ -1,0 +1,16 @@
+
+def get_gohighlevel_account_by_location_id(
+    db: Session,
+    location_id: str,
+    *,
+    user_id: Optional[int] = None,
+) -> Optional[models.GoHighLevelAccount]:
+    stmt = select(models.GoHighLevelAccount).where(models.GoHighLevelAccount.location_id == location_id)
+    if user_id is not None:
+        stmt = stmt.where(models.GoHighLevelAccount.user_id == user_id)
+    
+    result = db.execute(stmt)
+    return result.scalars().first()
+
+
+
